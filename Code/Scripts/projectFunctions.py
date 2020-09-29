@@ -24,7 +24,10 @@ from matplotlib import pyplot as plt
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 #from nltk.tokenize.treebank import TreebankWordDetokenizer
+from nltk.probability import FreqDist
 import seaborn as sns; sns.set()
+from textblob import TextBlob
+from sklearn.cluster import KMeans
 
 pd.set_option('display.max_columns', None)  # or 1000
 pd.set_option('display.max_rows', None)  # or 1000
@@ -54,7 +57,7 @@ def exploreData(data):
            cols = data.shape[1]    
            
            #separate features and target
-           drop_col = ['target']
+           drop_col = ['rating']
            features = data.drop(drop_col, axis = 1)
            target = data[drop_col]
           
@@ -119,30 +122,30 @@ def tokenString(sen,fdist,stop_w):
            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
            message = template.format(type(ex).__name__, ex.args)
            print (message)
-           
-def transformData(features,target):
+
+def sentimentPolarity(sen):
     try:
-        
-#        skewed = ['rain']
-#        features_log_transformed = pd.DataFrame(data = features)
-#        features_log_transformed[skewed] = features[skewed].apply(lambda x: np.log(x + 1))
-        
-        scaler = MinMaxScaler() # default=(0, 1)
-        numerical = ['PlayerLine','LineCount']
-        features_log_minmax_transform = pd.DataFrame(data = features)
-        features_log_minmax_transform[numerical] = scaler.fit_transform(features[numerical])
-                
+        sp = TextBlob(sen)
+        if (sp < 0):
+            polarity = 0
+        else:
+            polarity = 1
+            
+        return polarity 
+    except Exception as ex:
+           print ("-----------------------------------------------------------------------")
+           template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+           message = template.format(type(ex).__name__, ex.args)
+           print (message)
+       
+def transformData(data):
+    try:    
         # TODO: One-hot encode the 'features_log_minmax_transform' data using pandas.get_dummies()
         #features_final = pd.get_dummies(features_log_minmax_transform)
         enc = LabelEncoder()
-        features_log_minmax_transform['Play'] = enc.fit_transform(features_log_minmax_transform['Play'])
-        target = enc.fit_transform(target)
-        features_final = features_log_minmax_transform
-        # Print the number of features after one-hot encoding
-        #encoded = list(features_final.columns)
-        #print "{} total features after one-hot encoding.".format(len(encoded))
+        data['genre'] = enc.fit_transform(data['genre'])
          
-        return features_final, target
+        return data
         
     except Exception as ex:
            print ("-----------------------------------------------------------------------")
@@ -151,130 +154,32 @@ def transformData(features,target):
            print (message)
 
 #split the data in to train and test data
-def splitData(features,target,testsize):
+def splitData(features, testsize):
     try:
         # Split the 'features' and 'income' data into training and testing sets
-        X_train, X_test, y_train, y_test = train_test_split(features,
-                                                    target, 
-                                                    test_size = testsize, 
-                                                    random_state = 1)
+        X_train, X_test = train_test_split(features,
+                                           test_size = testsize, 
+                                           random_state = 1)
 
         # Show the results of the split
         print ("Features training set has {} samples.".format(X_train.shape[0]))
         print ("Features testing set has {} samples.".format(X_test.shape[0]))
-        print ("Target training set has {} samples.".format(y_train.shape[0]))
-        print ("Target testing set has {} samples.".format(y_test.shape[0]))
         print ("-----------------------------------------------------------------------")
-        return X_train, X_test, y_train, y_test
+        return X_train, X_test
     except Exception as ex:
            print ("-----------------------------------------------------------------------")
            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
            message = template.format(type(ex).__name__, ex.args)
            print (message)
 
-def svmClassifier(X_train, X_test, y_train, y_test):
+def kmeans(X_train, X_test):
     try:
-        #Decision tree classifier
-        #learner = DecisionTreeClassifier(criterion=method, max_depth=depth, random_state=1)
-        clf = svm.SVC(random_state=0)
-        params = {'C':[5],'kernel':["poly"],'degree':[3],'gamma':[0.001]}
-        #params = {'criterion':['gini','entropy'], 'max_depth' : np.array([6,7,8])}
-        print('1')
-        scoring_fnc = make_scorer(fbeta_score,average='micro',beta=0.5)
-        learner = GridSearchCV(clf,params,scoring=scoring_fnc)
-        results = {}
-        print('2')
-        start_time = time.clock()
-        grid = learner.fit(X_train,y_train)
-        print('21')
-        end_time = time.clock()
-        results['train_time'] = end_time - start_time
-        clf_fit_train = grid.best_estimator_
-        start_time = time.clock()
-        clf_predict_train = clf_fit_train.predict(X_train)
-        clf_predict_test = clf_fit_train.predict(X_test)
-        end_time = time.clock()
-        results['pred_time'] = end_time - start_time  
-        print('3')
-        results['acc_train'] = accuracy_score(y_train, clf_predict_train)
-        results['acc_test']  = accuracy_score(y_test, clf_predict_test)
-#        results['f_train']   = fbeta_score(y_train, clf_predict_train, average='micro', beta=1)
-#        results['f_test']    = fbeta_score(y_test, clf_predict_test, average='micro', beta=1.5)
-        
-        return results,clf_fit_train      
+       kmeans = KMeans(n_clusters=15, random_state=0).fit(X_train)
+       result = kmeans.predict(X_test)
+       scr = kmeans.score(X_test)
+       return result, scr
     except Exception as ex:
-           print "-----------------------------------------------------------------------"
+           print ("-----------------------------------------------------------------------")
            template = "An exception of type {0} occurred. Arguments:\n{1!r}"
            message = template.format(type(ex).__name__, ex.args)
-           print message
-
-def decTree(X_train, y_train, X_test, y_test, method, depth):
-    try:
-        #Decision tree classifier
-        #learner = DecisionTreeClassifier(criterion=method, max_depth=depth, random_state=1)
-        clf = DecisionTreeClassifier(random_state=0)
-        params = {'max_depth':[depth],'criterion':[method]}
-        #params = {'criterion':['gini','entropy'], 'max_depth' : np.array([6,7,8])}
-
-        scoring_fnc = make_scorer(fbeta_score,average='micro',beta=0.5)
-        learner = GridSearchCV(clf,params,scoring=scoring_fnc)
-        results = {}
-         
-        start_time = time.clock()
-        grid = learner.fit(X_train,y_train)
-        
-        end_time = time.clock()
-        results['train_time'] = end_time - start_time
-        clf_fit_train = grid.best_estimator_
-        start_time = time.clock()
-        clf_predict_train = clf_fit_train.predict(X_train)
-        clf_predict_test = clf_fit_train.predict(X_test)
-        end_time = time.clock()
-        results['pred_time'] = end_time - start_time  
-         
-        results['acc_train'] = accuracy_score(y_train, clf_predict_train)
-        results['acc_test']  = accuracy_score(y_test, clf_predict_test)
-        results['f_train']   = fbeta_score(y_train, clf_predict_train, average='micro', beta=1)
-        results['f_test']    = fbeta_score(y_test, clf_predict_test, average='micro', beta=1.5)
-        
-        return results,clf_fit_train      
-    except Exception as ex:
-           print "-----------------------------------------------------------------------"
-           template = "An exception of type {0} occurred. Arguments:\n{1!r}"
-           message = template.format(type(ex).__name__, ex.args)
-           print message
-
-def naiveBayes(X_train, y_train, X_test, y_test):
-    try:
-        #Decision tree classifier
-        #learner = DecisionTreeClassifier(criterion=method, max_depth=depth, random_state=1)
-        clf = MultinomialNB()
-        params = {}
-
-        scoring_fnc = make_scorer(fbeta_score,average='micro',beta=0.5)
-        learner = GridSearchCV(clf,params,scoring=scoring_fnc)
-        results = {}
-         
-        start_time = time.clock()
-        grid = learner.fit(X_train,y_train)
-        
-        end_time = time.clock()
-        results['train_time'] = end_time - start_time
-        clf_fit_train = grid.best_estimator_
-        start_time = time.clock()
-        clf_predict_train = clf_fit_train.predict(X_train)
-        clf_predict_test = clf_fit_train.predict(X_test)
-        end_time = time.clock()
-        results['pred_time'] = end_time - start_time  
-         
-        results['acc_train'] = accuracy_score(y_train, clf_predict_train)
-        results['acc_test']  = accuracy_score(y_test, clf_predict_test)
-        results['f_train']   = fbeta_score(y_train, clf_predict_train, average='micro', beta=1)
-        results['f_test']    = fbeta_score(y_test, clf_predict_test, average='micro', beta=1.5)
-        
-        return results,clf_fit_train      
-    except Exception as ex:
-           print "-----------------------------------------------------------------------"
-           template = "An exception of type {0} occurred. Arguments:\n{1!r}"
-           message = template.format(type(ex).__name__, ex.args)
-           print message
+           print (message)

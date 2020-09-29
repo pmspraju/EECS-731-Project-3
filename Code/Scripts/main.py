@@ -6,108 +6,70 @@ Created on Mon Jul 10 00:14:26 2017
 """
 # Import libraries necessary for this project
 import sklearn
-import networkx as nx
+#import networkx as nx
 import numpy  as np
 import pandas as pd
 from pandas import compat
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
-from nltk.probability import FreqDist
 
 compat.PY3 = True
 print ("-----------------------------------------------------------------------")
 print('The scikit-learn version is {}.'.format(sklearn.__version__))
 
 #load functions from 
-from projectFunctions import loadData, exploreData, missingValues, tokenString, transformData
+from projectFunctions import loadData, sentimentPolarity, exploreData, missingValues
 
-path = r'C:\Users\pmspr\Documents\HS\MS\Sem 3\EECS 731\Week 4\HW\Git\EECS-731-Project-2\Data'
-filename = "Shakespeare_data.csv"
-data = loadData(path,filename)
-drop_col = ['Dataline','PlayerLinenumber','ActSceneLine']
+path = r'C:\Users\pmspr\Documents\HS\MS\Sem 3\EECS 731\Week 5\HW\Git\EECS-731-Project-3\Data'
+filename = "links.csv"
+data_l = loadData(path,filename)
+
+path = r'C:\Users\pmspr\Documents\HS\MS\Sem 3\EECS 731\Week 5\HW\Git\EECS-731-Project-3\Data'
+filename = "movies.csv"
+data_m = loadData(path,filename)
+genres = ['Action','Adventure','Animation','Childrens','Comedy','Crime','Documentary','Drama','Fantasy','Film-Noir','Horror','Musical','Mystery','Romance','Sci-Fi','Thriller','War','Western']
+
+d1 = pd.DataFrame(columns = ['movieId','title','genre'])
+for ind, row in data_m.iterrows():
+    gstr = row['genres']
+    glst = gstr.split("|")
+    cnt = 0
+    for x in glst:
+        d1.loc[ind + cnt] = data_m.loc[ind]
+        d1.at[ind+cnt,'genre'] = x
+        cnt = cnt + 1
+#d1.to_csv('test.csv',index=False)   
+
+path = r'C:\Users\pmspr\Documents\HS\MS\Sem 3\EECS 731\Week 5\HW\Git\EECS-731-Project-3\Data'
+filename = "ratings.csv"
+data_r = loadData(path,filename)
+data_r = data_r.drop(['userId','timestamp'], axis = 1)
+data_r = data_r.groupby(['movieId'], as_index=False).max(level=0)
+data_r['rating'] = data_r.groupby(['movieId'], as_index=False)['rating'].apply(lambda x: x.value_counts().index[0])
+#data_r.to_csv('test.csv',index=False)
+
+path = r'C:\Users\pmspr\Documents\HS\MS\Sem 3\EECS 731\Week 5\HW\Git\EECS-731-Project-3\Data'
+filename = "tags.csv"
+data_t = loadData(path,filename)
+data_t = data_t.drop(['userId','timestamp'], axis = 1)
+data_t['tag'] = data_t['tag'].apply(lambda x: sentimentPolarity(x))
+data_t = data_t.groupby(['movieId'], as_index=False).count()
+#data_t.to_csv('test.csv',index=False)
+
+data2 = pd.merge(data_r,data_t, on=['movieId'], how='inner')
+data = pd.merge(d1,data2, on=['movieId'], how='inner')
+data.to_csv('test.csv',index=False)
+
+drop_col = ['title']
 data = data.drop(drop_col, axis = 1)
-data.rename(columns={'Player':'target'},inplace=True)
-print(data.columns)
 
 print ("----------------------Shakespear Play data-----------------------------")
 features, target = exploreData(data)
 misVal, mis_val_table_ren_columns = missingValues(data)
 
-# Print some summary information
-print ("Columns that have missing values:" + str(misVal.shape[0]))
-print ("-----------------------------------------------------------------------")
-print(mis_val_table_ren_columns.head(20))
-
-#Remove rows with missing target values
-ind = data[data['target'].isnull()].index.tolist()
-data = data.drop(index=ind, axis=0)
-
-#Compute features to add value
-line_count = data.groupby(['Play','target'], as_index=False).count()
-line_count.rename(columns={'PlayerLine':'LineCount'},inplace=True)
- 
-#merge the group by counts to original dataframe
-data = pd.merge(data,line_count,on=['Play','target'], how='inner')
-
-#Remove rows with line count <=200
-#Remove rows with missing target values
-#ind = data[data['LineCount'] <= 350].index.tolist()
-#data = data.drop(index=ind, axis=0)
-
-#Find the important players in a play using network
-#network graph
-g = nx.Graph()
-g = nx.from_pandas_edgelist(data,source='Play',target='target')
- 
-#Get importance by computing Degree of centrality
-col = ['Degree','PageRank','Name']
-doc = pd.DataFrame(columns = col)
-doc['Degree'] = nx.degree_centrality(g).values()
-doc['PageRank'] = nx.pagerank(g).values()
-doc['Name'] = nx.degree_centrality(g).keys()
-
-#Extract only importance of players
-doc_target = doc[doc['Name'].isin(data['target'].unique().tolist())]
-doc_target = doc_target.drop(['PageRank'], axis = 1)
-doc_target.rename(columns={'Name':'target'},inplace=True)
-data = pd.merge(data,doc_target,on=['target'], how='inner')
-
-t = []
-data['PlayerLine'].apply(lambda x: t.append(x))
-corpus = ' '.join(t)
-stop_w = set(stopwords.words('english'))
-tokens = word_tokenize(corpus)
-sen = [w for w in tokens if not w in stop_w]
-corpus = [w for w in sen if w.isalpha()]
-fdist=FreqDist(corpus)
-
-#tokenize the strig
-#Compute the frequency of words in a sentence 
-data['PlayerLine'] = data['PlayerLine'].apply(lambda x: tokenString(x,fdist,stop_w))
-
-features, target = exploreData(data)
-features_final, target_final = transformData(features, target)
-
-#Split the data with test size = 30
-from projectFunctions import splitData,svmClassifier,decTree,naiveBayes
-X_train, X_test, y_train, y_test = splitData(features_final, target_final, 0.3)
-
-#results,learner = svmClassi    fier(X_train, X_test, y_train, y_test)
-
-#print "Times for Training, Prediction: %.5f, %.5f" %(results['train_time'], results['pred_time'])     
-#print "Accuracy for Training, Test sets: %.5f, %.5f" %(results['acc_train'], results['acc_test'])     
-#print "-----------------------------------------------------------------------"
-
-results,learner = decTree(X_train, y_train, X_test, y_test, 'gini', 13)
-# 
-print "Times for Training, Prediction: %.5f, %.5f" %(results['train_time'], results['pred_time'])     
-print "Accuracy for Training, Test sets: %.5f, %.5f" %(results['acc_train'], results['acc_test'])     
-print "-----------------------------------------------------------------------"
-
-results,learner = naiveBayes(X_train, y_train, X_test, y_test)
- 
-print "Times for Training, Prediction: %.5f, %.5f" %(results['train_time'], results['pred_time'])     
-print "Accuracy for Training, Test sets: %.5f, %.5f" %(results['acc_train'], results['acc_test'])     
-print "-----------------------------------------------------------------------"
+from projectFunctions import splitData, kmeans, transformData
+data_tran = transformData(data)
+X_train, X_test = splitData(data_tran,  0.3)
+result,scr = kmeans(X_train, X_test)
+print(result)
+print(scr)
 
 #data.to_csv('test.csv',index=False)
